@@ -55,7 +55,13 @@ To swap providers, change `LLM_PROVIDER` in `.env`. No code changes required.
 npm run ask -- "what is INC0012345 about?"
 npm run ask -- "list priority 1 incidents"
 npm run ask -- "what database change is scheduled?"
+npm run ask -- "what database upgrade is scheduled?"
+npm run ask -- "what happened with the WAF rules?"
+npm run ask -- "list open incidents for the database team"
+npm run ask -- "what is the meaning of life?"
 ```
+
+The last one should return *"I don't have enough information."* — it's the grounding test, confirming the LLM doesn't hallucinate beyond the retrieved sources.
 
 Output shape:
 
