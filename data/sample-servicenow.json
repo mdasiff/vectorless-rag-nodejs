@@ -1,0 +1,101 @@
+[
+  {
+    "id": "INC0012345",
+    "type": "incident",
+    "short_description": "Login page returns 500 for SSO users",
+    "description": "Affected users report a 500 error after Okta redirect. Started around 09:00 UTC. Pod logs show JWT signature verification failures after a recent rotation of the IdP signing certificate.",
+    "work_notes": "Rolled back idp-config to previous version. Monitoring.",
+    "state": "in_progress",
+    "priority": "1",
+    "assignment_group": "Identity Platform",
+    "opened_at": "2026-05-20T09:00:00Z"
+  },
+  {
+    "id": "INC0012346",
+    "type": "incident",
+    "short_description": "Reports dashboard slow during EOD batch",
+    "description": "Finance team reports dashboard latency >30s between 17:00-18:30 IST. Correlates with the EOD reconciliation batch job running on the shared reporting DB.",
+    "work_notes": "Investigating long-running queries on reporting-db-prod.",
+    "state": "in_progress",
+    "priority": "2",
+    "assignment_group": "Database Team",
+    "opened_at": "2026-05-22T11:30:00Z"
+  },
+  {
+    "id": "INC0012347",
+    "type": "incident",
+    "short_description": "S3 export job failing with AccessDenied",
+    "description": "Nightly data export to s3://acme-exports/finance/ failing since 2026-05-23. KMS key policy changed during compliance review and removed the export role.",
+    "work_notes": "Restored KMS key grant. Re-running failed jobs.",
+    "state": "resolved",
+    "priority": "2",
+    "assignment_group": "Data Platform",
+    "opened_at": "2026-05-23T02:15:00Z"
+  },
+  {
+    "id": "INC0012348",
+    "type": "incident",
+    "short_description": "Email notifications not being sent from CRM",
+    "description": "Sales team reports CRM stopped emailing customers after a deploy on 2026-05-24. Sendgrid API key was rotated but the secret was not updated in the CRM deployment.",
+    "work_notes": "Updated secret in vault. Restarted CRM pods.",
+    "state": "closed",
+    "priority": "3",
+    "assignment_group": "CRM Support",
+    "opened_at": "2026-05-24T14:00:00Z"
+  },
+  {
+    "id": "RITM0023001",
+    "type": "request",
+    "short_description": "Request access to production logs (Splunk index: app_prod)",
+    "description": "Requester needs read access to the app_prod Splunk index for on-call rotation. Manager approval received. Standard 90-day access.",
+    "work_notes": "Provisioned via SailPoint role app_prod_reader.",
+    "state": "closed",
+    "priority": "4",
+    "assignment_group": "Access Management",
+    "opened_at": "2026-05-18T10:00:00Z"
+  },
+  {
+    "id": "RITM0023002",
+    "type": "request",
+    "short_description": "New laptop for incoming engineer",
+    "description": "Standard M-series MacBook Pro 14, 36GB RAM, for new hire starting 2026-06-02. Ship to Bangalore office.",
+    "work_notes": "Order placed with vendor, ETA 2026-05-29.",
+    "state": "in_progress",
+    "priority": "3",
+    "assignment_group": "IT Procurement",
+    "opened_at": "2026-05-21T08:00:00Z"
+  },
+  {
+    "id": "CHG0030021",
+    "type": "change",
+    "short_description": "Upgrade reporting-db-prod from Postgres 14 to 16",
+    "description": "Major version upgrade with pgvector extension. Includes pre-migration dump, in-place upgrade via pg_upgrade, post-checks. Expected 45 min downtime window.",
+    "work_notes": "CAB approved 2026-05-19. Scheduled for 2026-05-28 22:00 IST.",
+    "state": "scheduled",
+    "priority": "2",
+    "assignment_group": "Database Team",
+    "opened_at": "2026-05-15T12:00:00Z"
+  },
+  {
+    "id": "CHG0030022",
+    "type": "change",
+    "short_description": "Rotate IdP signing certificate (Okta)",
+    "description": "Quarterly Okta IdP signing certificate rotation. Coordinated with all SPs. Includes rollback plan to previous cert if any SP fails verification.",
+    "work_notes": "Implemented 2026-05-20. Caused INC0012345 due to cached cert in identity-gateway.",
+    "state": "closed",
+    "priority": "3",
+    "assignment_group": "Identity Platform",
+    "opened_at": "2026-05-12T09:00:00Z"
+  },
+  {
+    "id": "CHG0030023",
+    "type": "change",
+    "short_description": "Roll out new WAF rules to block credential stuffing",
+    "description": "Add Cloudflare WAF rules targeting known credential-stuffing patterns observed against /login. Deploy first to staging, then 10% prod, then 100%.",
+    "work_notes": "CAB approval pending security review.",
+    "state": "new",
+    "priority": "2",
+    "assignment_group": "Security Engineering",
+    "opened_at": "2026-05-25T15:30:00Z"
+  }
+]
