@@ -1,6 +1,6 @@
-# Vectorless RAG (Node.js + TypeScript + AWS Bedrock)
+# Vectorless RAG (Node.js + TypeScript)
 
-A question-answering RAG system that uses **BM25 keyword search** instead of vector embeddings, and **AWS Bedrock Claude** for answer generation. Designed to start with a local JSON dataset and switch to ServiceNow (INC / RITM / CHG) later without changing the rest of the pipeline.
+A question-answering RAG system that uses **BM25 keyword search** instead of vector embeddings, with a pluggable LLM layer (Anthropic API or AWS Bedrock, selectable via env flag). Designed to start with a local JSON dataset and switch to ServiceNow (INC / RITM / CHG) later without changing the rest of the pipeline.
 
 ## Why vectorless?
 
@@ -11,20 +11,35 @@ For structured ticket/record data, BM25 + metadata filtering usually beats embed
 ```bash
 npm install
 cp .env.example .env
-# edit .env if your region or model id differ
+# edit .env — at minimum, paste your ANTHROPIC_API_KEY
 ```
 
-`.env` keys:
-- `AWS_REGION` — e.g. `us-east-1`
-- `BEDROCK_MODEL_ID` — Bedrock model id. The default is `us.anthropic.claude-sonnet-4-5-20250929-v1:0` (a US cross-region inference profile). Confirm the exact id in the Bedrock console under **Model catalog → Inference**.
-- `TOP_K` — number of documents to retrieve per query (default 5)
-- `DATA_PATH` — path to your JSON data file (default `./data/sample.json`)
+### LLM provider
 
-AWS credentials are picked up via the standard AWS SDK chain (env vars, `~/.aws/credentials`, SSO, IAM role). Verify with:
+The system reads `LLM_PROVIDER` from `.env` to pick which backend to call:
 
-```bash
-aws sts get-caller-identity
-```
+| `LLM_PROVIDER` | Backend | Required env |
+|---|---|---|
+| `anthropic` (default) | Direct Anthropic API | `ANTHROPIC_API_KEY` |
+| `bedrock` | AWS Bedrock (Claude or any other Bedrock-hosted model) | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `BEDROCK_MODEL_ID` |
+
+To swap providers, change `LLM_PROVIDER` in `.env`. No code changes required.
+
+> **Why Anthropic API as the default today?** Our AWS account is on AISPL (India entity), and new AISPL accounts have an automated risk hold on third-party Marketplace AI models (Anthropic on Bedrock) for the first few weeks-to-months. The hold will lift over time as the account builds spending history. Until then, the direct Anthropic API gets us the same Claude models with separate billing and zero AISPL friction. Once Bedrock opens up, flip `LLM_PROVIDER=bedrock` and you're back.
+
+### Anthropic API setup (current default)
+
+1. Sign up at https://console.anthropic.com.
+2. Settings → API Keys → Create Key → copy the `sk-ant-...` value.
+3. Paste it into `.env` as `ANTHROPIC_API_KEY=sk-ant-...`.
+4. New accounts get $5 free credit — enough for thousands of test queries on the sample data.
+
+### AWS Bedrock setup (future / when account unblocks)
+
+1. Bedrock console → Model access → enable Claude Sonnet 4.5 (us-east-1).
+2. IAM → create user with `AmazonBedrockFullAccess` → generate access key + secret.
+3. Paste creds + `BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0` into `.env`.
+4. Set `LLM_PROVIDER=bedrock`.
 
 ## Ask a question
 
@@ -49,7 +64,7 @@ Sources:
 ```
 src/
 ├── cli.ts              # CLI entry — parses argv, prints answer + sources
-├── config.ts           # env loading
+├── config.ts           # env loading (LLM_PROVIDER + provider-specific keys)
 ├── types.ts            # Document, Hit, Answer
 ├── loaders/
 │   ├── index.ts        # picks loader based on config.dataSource
@@ -58,9 +73,11 @@ src/
 │   ├── bm25.ts         # MiniSearch-based BM25 index + query
 │   └── filter.ts       # metadata filter helpers (byState, byPriority, ...)
 ├── llm/
-│   ├── bedrock.ts      # @aws-sdk/client-bedrock-runtime wrapper
+│   ├── index.ts        # provider factory: invokeModel(system, user)
+│   ├── anthropic.ts    # @anthropic-ai/sdk implementation
+│   ├── bedrock.ts      # @aws-sdk/client-bedrock-runtime implementation
 │   └── prompt.ts       # citation-enforcing system + user prompts
-└── rag.ts              # pipeline: load → index → search → invoke Claude
+└── rag.ts              # pipeline: load → index → search → invokeModel
 data/sample.json        # 9 fake ServiceNow-shaped records for testing
 ```
 
@@ -70,6 +87,7 @@ data/sample.json        # 9 fake ServiceNow-shaped records for testing
 2. `buildIndex` constructs a [MiniSearch](https://lucaong.github.io/minisearch/) BM25 index over `title` (boosted 2×) and `text`, with prefix and fuzzy matching enabled.
 3. `search` runs the query, optionally pre-filtered by metadata (e.g. only `state in ("new","in_progress")`).
 4. The top-K hits are formatted into the user prompt with explicit source ids; the system prompt enforces citations and refuses to answer outside the sources.
+5. The active LLM provider (Anthropic or Bedrock) is called with the same `invokeModel(system, user)` signature.
 
 The index is cached in-process after the first query.
 
@@ -81,7 +99,7 @@ The index is cached in-process after the first query.
 import { ask } from './src/rag.js';
 import { combine, byType, byPriority, byState } from './src/retriever/filter.js';
 
-await ask('what's broken right now?', {
+await ask("what's broken right now?", {
   filter: combine(byType('incident'), byPriority('1', '2'), byState('new', 'in_progress')),
 });
 ```
@@ -98,8 +116,4 @@ No other code changes are needed.
 
 ## Why not LangChain?
 
-LangChain is a framework that sits on top of a model provider like Bedrock. For this design — single-pass BM25 retrieval, one model call, one prompt — it adds abstraction tax (chains, retrievers, callbacks, parsers) without solving a problem we have. If you later need multi-hop retrieval, query rewriting, or tool-using agents, that's the moment to re-evaluate.
-
-## Why Bedrock (not the Anthropic API directly)?
-
-You're in AWS already. Bedrock gives you a single billing path, IAM-based access, and stays inside your VPC if you set up VPC endpoints. Call shape is similar enough to the Anthropic API that swapping later is one file (`src/llm/bedrock.ts`).
+LangChain is a framework that sits on top of a model provider. For this design — single-pass BM25 retrieval, one model call, one prompt — it adds abstraction tax (chains, retrievers, callbacks, parsers) without solving a problem we have. If you later need multi-hop retrieval, query rewriting, or tool-using agents, that's the moment to re-evaluate.

@@ -12,7 +12,7 @@ interface ClaudeResponse {
   usage?: { input_tokens: number; output_tokens: number };
 }
 
-export async function invokeClaude(system: string, user: string): Promise<string> {
+export async function invoke(system: string, user: string): Promise<string> {
   const body = {
     anthropic_version: 'bedrock-2023-05-31',
     max_tokens: 1024,

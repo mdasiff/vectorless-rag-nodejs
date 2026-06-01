@@ -2,8 +2,7 @@ import { config } from './config.js';
 import { loader } from './loaders/index.js';
 import { buildIndex, search, type Index } from './retriever/bm25.js';
 import type { DocFilter } from './retriever/filter.js';
-import { invokeClaude } from './llm/bedrock.js';
-import { SYSTEM, buildUserPrompt } from './llm/prompt.js';
+import { invokeModel, SYSTEM, buildUserPrompt } from './llm/index.js';
 import type { Answer } from './types.js';
 
 let cachedIndex: Index | null = null;
@@ -23,7 +22,7 @@ export interface AskOptions {
 export async function ask(question: string, opts: AskOptions = {}): Promise<Answer> {
   const index = await getIndex();
   const hits = search(index, question, opts.topK ?? config.topK, opts.filter);
-  const answerText = await invokeClaude(SYSTEM, buildUserPrompt(question, hits));
+  const answerText = await invokeModel(SYSTEM, buildUserPrompt(question, hits));
   return {
     question,
     answer: answerText,

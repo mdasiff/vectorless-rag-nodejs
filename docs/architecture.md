@@ -8,11 +8,12 @@ A short demo deck for the team. All diagrams below are written in Mermaid and re
 
 A **vectorless RAG** (Retrieval-Augmented Generation) system. It answers natural-language questions over a corpus of structured records (today: a JSON file of ServiceNow-shaped tickets; tomorrow: live ServiceNow data).
 
-Two things make it different from a typical RAG:
+Three things make it different from a typical RAG:
 - **No embeddings, no vector database.** Retrieval uses BM25 keyword search (`MiniSearch` library) plus metadata filters. This is a better fit for ticket data because it has rich structured metadata (state, priority, assignment_group, dates) and users often search by exact terms (ticket numbers, error strings, team names).
-- **Direct AWS SDK, no LangChain.** One model provider (Bedrock + Claude), one prompt, one call. No framework abstraction.
+- **No LangChain.** Direct SDK calls. One prompt, one model call.
+- **Pluggable LLM provider behind one function.** `invokeModel(system, user)` is implemented by both the Anthropic API (`src/llm/anthropic.ts`) and AWS Bedrock (`src/llm/bedrock.ts`); an env flag (`LLM_PROVIDER`) picks the active one. The rest of the pipeline doesn't know or care which one is wired in.
 
-The result: ~17 files, four dependencies, zero infrastructure to operate, and a clean migration path from local JSON to ServiceNow.
+The result: small dependency surface, zero infrastructure to operate, and a clean migration path from local JSON to ServiceNow and from one LLM backend to another.
 
 ---
 
@@ -38,8 +39,12 @@ flowchart LR
         prompt["prompt builder<br/>SYSTEM rules<br/>+ retrieved sources<br/>+ user question"]
     end
 
-    subgraph LLM [LLM provider]
-        bedrock["AWS Bedrock<br/>Claude Sonnet 4.5<br/>cross-region inference"]
+    subgraph LLM [LLM provider - chosen by LLM_PROVIDER env]
+        factory["invokeModel<br/>src/llm/index.ts"]
+        anthropic["Anthropic API<br/>@anthropic-ai/sdk<br/>(default today)"]
+        bedrock["AWS Bedrock<br/>@aws-sdk/client-bedrock-runtime<br/>(when account unblocks)"]
+        factory --> anthropic
+        factory --> bedrock
     end
 
     User -->|question| cli
@@ -50,15 +55,16 @@ flowchart LR
     index --> retriever
     cli -->|question| retriever
     retriever --> prompt
-    prompt --> bedrock
-    bedrock -->|grounded answer<br/>with citations| cli
+    prompt --> factory
+    anthropic -->|grounded answer<br/>with citations| cli
+    bedrock -.->|grounded answer<br/>with citations| cli
     cli -->|answer + sources| User
 ```
 
 **Key design decisions:**
 - `Document { id, title, text, metadata }` is the single contract every loader must produce. Nothing downstream knows or cares whether a record came from JSON or ServiceNow.
 - The BM25 index is built in-process and cached after the first call. For larger corpora it can be persisted to disk via `MiniSearch.toJSON()` / `loadJSON()`.
-- The Bedrock call uses the Anthropic messages API shape that Bedrock accepts directly — no SDK abstractions.
+- The LLM call goes through `invokeModel(system, user)` in `src/llm/index.ts`. The active backend is picked from the `LLM_PROVIDER` env var at startup (`anthropic` or `bedrock`). Adding a new provider is one new file + one case in the factory.
 
 ---
 
@@ -72,7 +78,7 @@ sequenceDiagram
     participant Loader as jsonLoader
     participant Index as BM25 Index<br/>(MiniSearch)
     participant Prompt as Prompt builder
-    participant Bedrock as Bedrock<br/>Claude Sonnet 4.5
+    participant LLM as invokeModel<br/>(Anthropic or Bedrock)
 
     User->>CLI: npm run ask -- "list P1 incidents"
     CLI->>Loader: load()
@@ -83,8 +89,9 @@ sequenceDiagram
     Index-->>CLI: Hit[] (doc + score)
     CLI->>Prompt: buildUserPrompt(question, hits)
     Prompt-->>CLI: "SOURCES: [INC0012345] ...<br/>QUESTION: list P1 incidents"
-    CLI->>Bedrock: InvokeModel(system, user)
-    Bedrock-->>CLI: "INC0012345 is a P1 SSO login issue [INC0012345]"
+    CLI->>LLM: invokeModel(system, user)
+    Note over LLM: factory routes to<br/>Anthropic or Bedrock<br/>based on LLM_PROVIDER env
+    LLM-->>CLI: "INC0012345 is a P1 SSO login issue [INC0012345]"
     CLI-->>User: answer + sources block (id, title, score)
 ```
 
@@ -92,6 +99,7 @@ sequenceDiagram
 - Step 5: BM25 scoring is deterministic and explainable — you can show retrieval scores in the output and explain *why* each document was picked.
 - Step 8: the system prompt forces grounding. If the retrieved sources don't contain the answer, Claude is instructed to say "I don't have enough information." rather than hallucinate.
 - Step 8: citations like `[INC0012345]` are required for any claim, making answers auditable.
+- Step 9: the provider factory is the swap point — same call shape regardless of backend.
 
 ---
 
@@ -119,6 +127,29 @@ classDiagram
 ```
 
 `text` is what gets BM25-indexed (concatenated `short_description + description + work_notes`). `metadata` is opaque to the index but available for pre-filtering (e.g. only `state in ("new","in_progress")`).
+
+---
+
+## LLM provider abstraction (swap backends with one env var)
+
+```mermaid
+flowchart LR
+    rag["rag.ts<br/>calls invokeModel(system, user)"]
+    factory["src/llm/index.ts<br/>switch on LLM_PROVIDER"]
+    anth["src/llm/anthropic.ts<br/>@anthropic-ai/sdk<br/>uses ANTHROPIC_API_KEY"]
+    bed["src/llm/bedrock.ts<br/>@aws-sdk/client-bedrock-runtime<br/>uses AWS creds + BEDROCK_MODEL_ID"]
+
+    rag --> factory
+    factory -- LLM_PROVIDER=anthropic --> anth
+    factory -- LLM_PROVIDER=bedrock --> bed
+
+    style anth fill:#eafaea,stroke:#4ca64c
+    style bed fill:#e8f4ff,stroke:#4a90e2
+```
+
+Both providers expose the same `invoke(system: string, user: string) => Promise<string>` signature. The factory in `src/llm/index.ts` picks one at startup based on the `LLM_PROVIDER` env var. The rest of the pipeline is provider-agnostic.
+
+**Why this matters for our team:** our AWS account (AISPL/India) currently has Bedrock Marketplace subscriptions for Anthropic models on hold — a soft hold on new AISPL accounts that clears as the account builds spending history. Until then we run on the direct Anthropic API; when AWS opens Bedrock for us we flip `LLM_PROVIDER=bedrock` in `.env` and nothing else changes.
 
 ---
 
@@ -163,9 +194,9 @@ Migration cost: one new file (`src/loaders/serviceNowLoader.ts`), one case in th
 | Retrieval | BM25 + simple metadata filters | Add query rewriting if needed; semantic re-ranking optional |
 | Index | Rebuilt per process, in-memory | Persisted index, refreshed on schedule |
 | Interface | CLI | HTTP endpoint, Slack bot, web UI |
-| LLM | Bedrock Claude Sonnet 4.5 | Same (Haiku for cheaper queries, Sonnet for hard ones) |
+| LLM | Anthropic API (Claude Sonnet 4.5) via `LLM_PROVIDER=anthropic` | AWS Bedrock Claude via `LLM_PROVIDER=bedrock` once AWS account unblocks |
 | Observability | console.log of scores | Structured logs, latency metrics, eval harness |
-| Auth | AWS IAM user (dev) | IAM role with scoped `bedrock:InvokeModel` on specific model ARN |
+| Auth | API key in env (dev) | IAM role with scoped `bedrock:InvokeModel` on specific model ARN |
 
 ---
 
@@ -190,6 +221,8 @@ Migration cost: one new file (`src/loaders/serviceNowLoader.ts`), one case in th
 | BM25 index | [src/retriever/bm25.ts](../src/retriever/bm25.ts) |
 | Metadata filters | [src/retriever/filter.ts](../src/retriever/filter.ts) |
 | Prompt builder | [src/llm/prompt.ts](../src/llm/prompt.ts) |
-| Bedrock call | [src/llm/bedrock.ts](../src/llm/bedrock.ts) |
+| LLM factory | [src/llm/index.ts](../src/llm/index.ts) |
+| Anthropic provider | [src/llm/anthropic.ts](../src/llm/anthropic.ts) |
+| Bedrock provider | [src/llm/bedrock.ts](../src/llm/bedrock.ts) |
 | Pipeline glue | [src/rag.ts](../src/rag.ts) |
 | Document contract | [src/types.ts](../src/types.ts) |
