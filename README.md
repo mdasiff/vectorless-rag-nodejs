@@ -18,23 +18,31 @@ cp .env.example .env
 
 The system reads `LLM_PROVIDER` from `.env` to pick which backend to call:
 
-| `LLM_PROVIDER` | Backend | Required env |
-|---|---|---|
-| `anthropic` (default) | Direct Anthropic API | `ANTHROPIC_API_KEY` |
-| `bedrock` | AWS Bedrock (Claude or any other Bedrock-hosted model) | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `BEDROCK_MODEL_ID` |
+| `LLM_PROVIDER` | Backend | Required env | Notes |
+|---|---|---|---|
+| `gemini` (default) | Google Gemini via AI Studio | `GEMINI_API_KEY` | Free tier, no card required |
+| `anthropic` | Direct Anthropic API | `ANTHROPIC_API_KEY` | Requires paid credits |
+| `bedrock` | AWS Bedrock (Claude or any Bedrock-hosted model) | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `BEDROCK_MODEL_ID` | Long-term target; blocked on AISPL for now |
 
 To swap providers, change `LLM_PROVIDER` in `.env`. No code changes required.
 
-> **Why Anthropic API as the default today?** Our AWS account is on AISPL (India entity), and new AISPL accounts have an automated risk hold on third-party Marketplace AI models (Anthropic on Bedrock) for the first few weeks-to-months. The hold will lift over time as the account builds spending history. Until then, the direct Anthropic API gets us the same Claude models with separate billing and zero AISPL friction. Once Bedrock opens up, flip `LLM_PROVIDER=bedrock` and you're back.
+> **Why Gemini as the default today?** Our AWS account (AISPL/India) has a soft Marketplace hold on Anthropic Claude in Bedrock for new accounts, and the direct Anthropic API now requires paid credits up front. Google AI Studio's free tier (`gemini-2.5-flash`) lets us run thousands of RAG queries with no card, perfect for development and demos. The long-term target is `LLM_PROVIDER=bedrock` once the AWS account is unblocked.
 
-### Anthropic API setup (current default)
+### Google Gemini setup (current default)
+
+1. Open https://aistudio.google.com/apikey and sign in with a Google account.
+2. **Create API key** → copy the value (starts with `AIza...`).
+3. Paste it into `.env` as `GEMINI_API_KEY=AIza...`. No card required.
+4. Free tier limits: ~15 requests/minute on `gemini-2.5-flash` — comfortably more than any demo needs.
+
+### Anthropic API setup
 
 1. Sign up at https://console.anthropic.com.
-2. Settings → API Keys → Create Key → copy the `sk-ant-...` value.
-3. Paste it into `.env` as `ANTHROPIC_API_KEY=sk-ant-...`.
-4. New accounts get $5 free credit — enough for thousands of test queries on the sample data.
+2. **Plans & Billing** → add a payment method → buy credits (~$5 covers thousands of queries on this dataset).
+3. Settings → API Keys → Create Key → copy the `sk-ant-...` value.
+4. Paste it into `.env` as `ANTHROPIC_API_KEY=sk-ant-...`, set `LLM_PROVIDER=anthropic`.
 
-### AWS Bedrock setup (future / when account unblocks)
+### AWS Bedrock setup (long-term target)
 
 1. Bedrock console → Model access → enable Claude Sonnet 4.5 (us-east-1).
 2. IAM → create user with `AmazonBedrockFullAccess` → generate access key + secret.
@@ -74,6 +82,7 @@ src/
 │   └── filter.ts       # metadata filter helpers (byState, byPriority, ...)
 ├── llm/
 │   ├── index.ts        # provider factory: invokeModel(system, user)
+│   ├── gemini.ts       # @google/genai implementation
 │   ├── anthropic.ts    # @anthropic-ai/sdk implementation
 │   ├── bedrock.ts      # @aws-sdk/client-bedrock-runtime implementation
 │   └── prompt.ts       # citation-enforcing system + user prompts
@@ -87,7 +96,7 @@ data/sample.json        # 9 fake ServiceNow-shaped records for testing
 2. `buildIndex` constructs a [MiniSearch](https://lucaong.github.io/minisearch/) BM25 index over `title` (boosted 2×) and `text`, with prefix and fuzzy matching enabled.
 3. `search` runs the query, optionally pre-filtered by metadata (e.g. only `state in ("new","in_progress")`).
 4. The top-K hits are formatted into the user prompt with explicit source ids; the system prompt enforces citations and refuses to answer outside the sources.
-5. The active LLM provider (Anthropic or Bedrock) is called with the same `invokeModel(system, user)` signature.
+5. The active LLM provider (Gemini, Anthropic, or Bedrock) is called with the same `invokeModel(system, user)` signature.
 
 The index is cached in-process after the first query.
 

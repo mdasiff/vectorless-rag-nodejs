@@ -1,6 +1,7 @@
 import 'dotenv/config';
 
-type LlmProvider = 'anthropic' | 'bedrock';
+type LlmProvider = 'anthropic' | 'bedrock' | 'gemini';
+const VALID_PROVIDERS: LlmProvider[] = ['anthropic', 'bedrock', 'gemini'];
 
 function required(name: string): string {
   const v = process.env[name];
@@ -8,9 +9,9 @@ function required(name: string): string {
   return v;
 }
 
-const llmProvider = (process.env.LLM_PROVIDER ?? 'anthropic') as LlmProvider;
-if (llmProvider !== 'anthropic' && llmProvider !== 'bedrock') {
-  throw new Error(`Invalid LLM_PROVIDER: ${llmProvider} (expected 'anthropic' or 'bedrock')`);
+const llmProvider = (process.env.LLM_PROVIDER ?? 'gemini') as LlmProvider;
+if (!VALID_PROVIDERS.includes(llmProvider)) {
+  throw new Error(`Invalid LLM_PROVIDER: ${llmProvider} (expected one of: ${VALID_PROVIDERS.join(', ')})`);
 }
 
 export const config = {
@@ -24,4 +25,7 @@ export const config = {
 
   awsRegion: process.env.AWS_REGION ?? 'us-east-1',
   bedrockModelId: llmProvider === 'bedrock' ? required('BEDROCK_MODEL_ID') : (process.env.BEDROCK_MODEL_ID ?? ''),
+
+  geminiApiKey: llmProvider === 'gemini' ? required('GEMINI_API_KEY') : '',
+  geminiModel: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
 };

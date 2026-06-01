@@ -41,8 +41,10 @@ flowchart LR
 
     subgraph LLM [LLM provider - chosen by LLM_PROVIDER env]
         factory["invokeModel<br/>src/llm/index.ts"]
-        anthropic["Anthropic API<br/>@anthropic-ai/sdk<br/>(default today)"]
-        bedrock["AWS Bedrock<br/>@aws-sdk/client-bedrock-runtime<br/>(when account unblocks)"]
+        gemini["Google Gemini<br/>@google/genai<br/>(default today, free tier)"]
+        anthropic["Anthropic API<br/>@anthropic-ai/sdk<br/>(paid)"]
+        bedrock["AWS Bedrock<br/>@aws-sdk/client-bedrock-runtime<br/>(when AWS account unblocks)"]
+        factory --> gemini
         factory --> anthropic
         factory --> bedrock
     end
@@ -56,7 +58,8 @@ flowchart LR
     cli -->|question| retriever
     retriever --> prompt
     prompt --> factory
-    anthropic -->|grounded answer<br/>with citations| cli
+    gemini -->|grounded answer<br/>with citations| cli
+    anthropic -.->|grounded answer<br/>with citations| cli
     bedrock -.->|grounded answer<br/>with citations| cli
     cli -->|answer + sources| User
 ```
@@ -78,7 +81,7 @@ sequenceDiagram
     participant Loader as jsonLoader
     participant Index as BM25 Index<br/>(MiniSearch)
     participant Prompt as Prompt builder
-    participant LLM as invokeModel<br/>(Anthropic or Bedrock)
+    participant LLM as invokeModel<br/>(Gemini / Anthropic / Bedrock)
 
     User->>CLI: npm run ask -- "list P1 incidents"
     CLI->>Loader: load()
@@ -136,20 +139,26 @@ classDiagram
 flowchart LR
     rag["rag.ts<br/>calls invokeModel(system, user)"]
     factory["src/llm/index.ts<br/>switch on LLM_PROVIDER"]
+    gem["src/llm/gemini.ts<br/>@google/genai<br/>uses GEMINI_API_KEY"]
     anth["src/llm/anthropic.ts<br/>@anthropic-ai/sdk<br/>uses ANTHROPIC_API_KEY"]
     bed["src/llm/bedrock.ts<br/>@aws-sdk/client-bedrock-runtime<br/>uses AWS creds + BEDROCK_MODEL_ID"]
 
     rag --> factory
+    factory -- LLM_PROVIDER=gemini --> gem
     factory -- LLM_PROVIDER=anthropic --> anth
     factory -- LLM_PROVIDER=bedrock --> bed
 
+    style gem fill:#fff4e0,stroke:#e2934a
     style anth fill:#eafaea,stroke:#4ca64c
     style bed fill:#e8f4ff,stroke:#4a90e2
 ```
 
-Both providers expose the same `invoke(system: string, user: string) => Promise<string>` signature. The factory in `src/llm/index.ts` picks one at startup based on the `LLM_PROVIDER` env var. The rest of the pipeline is provider-agnostic.
+All three providers expose the same `invoke(system: string, user: string) => Promise<string>` signature. The factory in `src/llm/index.ts` picks one at startup based on the `LLM_PROVIDER` env var. The rest of the pipeline is provider-agnostic.
 
-**Why this matters for our team:** our AWS account (AISPL/India) currently has Bedrock Marketplace subscriptions for Anthropic models on hold — a soft hold on new AISPL accounts that clears as the account builds spending history. Until then we run on the direct Anthropic API; when AWS opens Bedrock for us we flip `LLM_PROVIDER=bedrock` in `.env` and nothing else changes.
+**Why three providers:**
+- **Gemini (current default)** — Google AI Studio's free tier (~15 req/min on `gemini-2.5-flash`) lets us run the demo and develop without billing friction.
+- **Anthropic API** — paid path to Claude Sonnet 4.5 directly. Wired in for the day we add credits.
+- **AWS Bedrock** — long-term target for AWS-native deployment. Currently blocked on a soft Marketplace hold our AISPL account is under; when it clears, flip the env var.
 
 ---
 
@@ -194,7 +203,7 @@ Migration cost: one new file (`src/loaders/serviceNowLoader.ts`), one case in th
 | Retrieval | BM25 + simple metadata filters | Add query rewriting if needed; semantic re-ranking optional |
 | Index | Rebuilt per process, in-memory | Persisted index, refreshed on schedule |
 | Interface | CLI | HTTP endpoint, Slack bot, web UI |
-| LLM | Anthropic API (Claude Sonnet 4.5) via `LLM_PROVIDER=anthropic` | AWS Bedrock Claude via `LLM_PROVIDER=bedrock` once AWS account unblocks |
+| LLM | Google Gemini (`gemini-2.5-flash`) via `LLM_PROVIDER=gemini` — free tier | AWS Bedrock Claude via `LLM_PROVIDER=bedrock` once AWS account unblocks (Anthropic API direct also wired in) |
 | Observability | console.log of scores | Structured logs, latency metrics, eval harness |
 | Auth | API key in env (dev) | IAM role with scoped `bedrock:InvokeModel` on specific model ARN |
 
@@ -222,6 +231,7 @@ Migration cost: one new file (`src/loaders/serviceNowLoader.ts`), one case in th
 | Metadata filters | [src/retriever/filter.ts](../src/retriever/filter.ts) |
 | Prompt builder | [src/llm/prompt.ts](../src/llm/prompt.ts) |
 | LLM factory | [src/llm/index.ts](../src/llm/index.ts) |
+| Gemini provider | [src/llm/gemini.ts](../src/llm/gemini.ts) |
 | Anthropic provider | [src/llm/anthropic.ts](../src/llm/anthropic.ts) |
 | Bedrock provider | [src/llm/bedrock.ts](../src/llm/bedrock.ts) |
 | Pipeline glue | [src/rag.ts](../src/rag.ts) |
