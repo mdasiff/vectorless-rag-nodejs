@@ -51,6 +51,8 @@ To swap providers, change `LLM_PROVIDER` in `.env`. No code changes required.
 
 ## Ask a question
 
+### ServiceNow demo (default — `data/sample.json`)
+
 ```bash
 npm run ask -- "what is INC0012345 about?"
 npm run ask -- "list priority 1 incidents"
@@ -62,6 +64,75 @@ npm run ask -- "what is the meaning of life?"
 ```
 
 The last one should return *"I don't have enough information."* — it's the grounding test, confirming the LLM doesn't hallucinate beyond the retrieved sources.
+
+### Property / real-estate demo (set `DATA_PATH=./data/sample-property.json` in `.env`)
+
+Covers property listings, localities, builders, FAQs, and home-buying guides.
+
+```bash
+# Property details
+npm run ask -- "Tell me about the 3 BHK apartment in Gaur City 2."
+npm run ask -- "What is the price of the Ace City apartment?"
+npm run ask -- "Which properties are ready to move?"
+npm run ask -- "Show me apartments under 80 lakh."
+npm run ask -- "Which property has the largest area?"
+npm run ask -- "Do you have any residential plots available?"
+npm run ask -- "Which property is suitable for a family of 4?"
+npm run ask -- "Which properties are available in Noida Extension?"
+npm run ask -- "Show me 3 BHK properties under 1 crore."
+npm run ask -- "What amenities are available in Gaur City 2?"
+
+# Locality and neighbourhood
+npm run ask -- "Is Noida Extension a good place to live?"
+npm run ask -- "Tell me about Greater Noida West."
+npm run ask -- "What schools are available near Noida Extension?"
+npm run ask -- "Are there hospitals near these properties?"
+npm run ask -- "Which area is best for first-time home buyers?"
+npm run ask -- "How is the connectivity of Noida Extension?"
+npm run ask -- "Which locality has the best infrastructure?"
+npm run ask -- "Tell me about nearby shopping malls and markets."
+
+# Builder
+npm run ask -- "Who is Gaursons?"
+npm run ask -- "Is Gaursons a trusted builder?"
+npm run ask -- "Which projects are developed by ACE Group?"
+npm run ask -- "Tell me about the builder of this property."
+npm run ask -- "What is the reputation of ACE Group?"
+
+# Home-buying FAQs and guides
+npm run ask -- "What documents should I verify before buying a property?"
+npm run ask -- "What is RERA?"
+npm run ask -- "How much home loan can I get?"
+npm run ask -- "What should I check before booking a flat?"
+npm run ask -- "What is the difference between ready-to-move and under-construction properties?"
+npm run ask -- "How much down payment is usually required for a home loan?"
+npm run ask -- "What are the benefits of buying a ready-to-move property?"
+
+# Cross-record queries
+npm run ask -- "Show me 3 BHK apartments under 80 lakh."
+npm run ask -- "Which properties have nearby schools?"
+npm run ask -- "Which properties are close to hospitals?"
+npm run ask -- "Compare Gaur City 2 and Ace City."
+npm run ask -- "Which property offers the best value for money?"
+npm run ask -- "Which property would you recommend for a family?"
+npm run ask -- "Which property is best for investment?"
+npm run ask -- "Which property is best for rental income?"
+
+# Persona / scenario-driven
+npm run ask -- "I have a budget of 80 lakh. Which property would you recommend?"
+npm run ask -- "I have a budget of 60 lakh. What options do I have?"
+npm run ask -- "I need a 3 BHK for my family. What are my options?"
+npm run ask -- "I want a ready-to-move apartment near good schools."
+npm run ask -- "I am a first-time home buyer. Which property should I consider?"
+npm run ask -- "I work in Noida. Which property offers good connectivity?"
+npm run ask -- "I want a property with modern amenities and clubhouse facilities."
+npm run ask -- "I have two children. Which property is near good schools?"
+npm run ask -- "Which property has the best location for daily commuting?"
+npm run ask -- "Can you recommend a property for long-term investment?"
+npm run ask -- "What are the advantages of buying in Noida Extension?"
+npm run ask -- "Which property is closest to hospitals and schools?"
+npm run ask -- "What are the upcoming developments in Greater Noida West?"
+```
 
 Output shape:
 
